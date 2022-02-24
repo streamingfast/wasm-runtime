@@ -339,7 +339,7 @@ func Simulate(env Environment, wasmFile string, entrypointName string, returns r
 
 	heap := &AscHeap{
 		memory: memory,
-		allocator: func(i ...interface{}) (interface{}, error) {
+		allocator: func(i ...interface{}) (interface{}, error) { //todo: need and option for this
 			return int32(0), nil
 		},
 	}
