@@ -3,7 +3,6 @@ package wasm
 import (
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -370,7 +369,8 @@ func (r *Runtime) Execute(wasmFile string, functionName string, returns reflect.
 	}
 
 	heap := &AscHeap{
-		memory: memory,
+		memory:        memory,
+		arenaFreeSize: len(memory.Data()),
 	}
 	if r.memoryAllocFactory != nil {
 		heap.allocator = r.memoryAllocFactory(instance)
@@ -520,18 +520,18 @@ func (h AscBytes) ToPtr(heap *AscHeap) (int32, int32) {
 }
 
 func (r *Runtime) callFunction(heap *AscHeap, entrypoint *wasmer.Function, parameters ...interface{}) (out interface{}, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			switch x := r.(type) {
-			case string:
-				err = errors.New(x)
-			case error:
-				err = x
-			default:
-				err = errors.New("Unknown panic")
-			}
-		}
-	}()
+	//defer func() {
+	//	if r := recover(); r != nil {
+	//		switch x := r.(type) {
+	//		case string:
+	//			err = errors.New(x)
+	//		case error:
+	//			err = x
+	//		default:
+	//			err = errors.New("Unknown panic")
+	//		}
+	//	}
+	//}()
 	wasmParameters := toWASMParameters(heap, parameters, r.pointerWithSize)
 
 	return entrypoint.Call(wasmParameters...)
