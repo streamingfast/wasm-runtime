@@ -7,49 +7,60 @@ import (
 	"strings"
 	"testing"
 
-	wasm "github.com/streamingfast/wasm-runtime"
+	"github.com/streamingfast/wasm-runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wasmerio/wasmer-go/wasmer"
 )
 
 func TestAssemblyScript(t *testing.T) {
 	tests := []struct {
 		wasmFile      string
-		entrypoint    string
+		functionName  string
 		parameters    []interface{}
 		expectedCalls []call
 		expected      interface{}
 		expectedErr   error
 	}{
 		{
-			wasmFile:   "scripts/i64.wasm",
-			entrypoint: "main", parameters: []interface{}{int64(-10)},
-			expected: int64(-20),
+			wasmFile:     "scripts/i64.wasm",
+			functionName: "main",
+			parameters:   []interface{}{int64(-10)},
+			expected:     int64(-20),
 		},
 
 		{
 			// A u64 types must still be passed as a int64 value and is returned as a int64
-			wasmFile:   "scripts/u64.wasm",
-			entrypoint: "main", parameters: []interface{}{int64(10)},
-			expected: int64(20),
+			wasmFile:     "scripts/u64.wasm",
+			functionName: "main",
+			parameters:   []interface{}{int64(10)},
+			expected:     int64(20),
 		},
 
 		{
-			wasmFile:   "scripts/string.wasm",
-			entrypoint: "main", parameters: []interface{}{"some value"},
-			expected: "some ",
+			wasmFile:     "scripts/string.wasm",
+			functionName: "main",
+			parameters:   []interface{}{"some value"},
+			expected:     "some ",
 		},
 
 		{
-			wasmFile:   "scripts/uint8_array.wasm",
-			entrypoint: "main", parameters: []interface{}{[]byte{0xFA, 0xE9, 0xF1}},
-			expected: []byte{0xE6, 0xF5, 0xAF},
+			wasmFile:     "scripts/uint8_array.wasm",
+			functionName: "main",
+			parameters:   []interface{}{[]byte{0xFA, 0xE9, 0xF1}},
+			expected:     []byte{0xE6, 0xF5, 0xAF},
 		},
 
 		{
 			wasmFile:      "imports/log_error.wasm",
-			entrypoint:    "main",
+			functionName:  "main",
 			expectedCalls: []call{{"index", "log.log", []interface{}{int32(1), "log error abc - 123"}, nil}},
+		},
+		{
+			wasmFile:     "scripts/hello.wasm",
+			functionName: "hello",
+			parameters:   []interface{}{"Colin"},
+			expected:     "hello Colin",
 		},
 	}
 
@@ -62,7 +73,18 @@ func TestAssemblyScript(t *testing.T) {
 				returns = reflect.TypeOf(test.expected)
 			}
 
-			actual, err := wasm.Simulate(env, filepath.Join("build", test.wasmFile), test.entrypoint, returns, test.parameters...)
+			memoryAllocationFactory := func(instance *wasmer.Instance) wasmer.NativeFunction {
+				function, err := instance.Exports.GetFunction("memory.allocate")
+				if err != nil {
+					panic(fmt.Errorf("getting memory.allocate func: %w", err))
+				}
+				return function
+			}
+
+			runtime := wasm.NewRuntime(env, wasm.WithMemoryAllocationFactory(memoryAllocationFactory))
+
+			actual, err := runtime.Execute(filepath.Join("build", test.wasmFile), test.functionName, returns, test.parameters...)
+
 			if test.expectedErr == nil {
 				require.NoError(t, err)
 				assert.Equal(t, test.expected, actual)

@@ -286,7 +286,44 @@ func (e *DefaultEnvironment) Debug() string {
 	return hex.EncodeToString(e.memory.Data())
 }
 
-func Simulate(env Environment, wasmFile string, entrypointName string, returns reflect.Type, parameters ...interface{}) (interface{}, error) {
+type MemoryAllocationFactory func(instance *wasmer.Instance) wasmer.NativeFunction
+type RuntimeOption func(*Runtime)
+
+func WithMemoryAllocationFactory(factory MemoryAllocationFactory) RuntimeOption {
+	return func(r *Runtime) {
+		r.memoryAllocFactory = factory
+	}
+}
+
+func WithParameterPointSize() RuntimeOption {
+	return func(r *Runtime) {
+		r.pointerWithSize = true
+	}
+}
+
+type Runtime struct {
+	env                Environment
+	memoryAllocFactory MemoryAllocationFactory
+	pointerWithSize    bool
+}
+
+func NewRuntime(env Environment, options ...RuntimeOption) *Runtime {
+	runtime := &Runtime{
+		env: env,
+	}
+
+	for _, option := range options {
+		option(runtime)
+	}
+	return runtime
+}
+
+//Deprecated
+func (r *Runtime) Simulate(wasmFile string, entrypointName string, returns reflect.Type, parameters ...interface{}) (interface{}, error) {
+	return r.Execute(wasmFile, entrypointName, returns, parameters)
+}
+
+func (r *Runtime) Execute(wasmFile string, functionName string, returns reflect.Type, parameters ...interface{}) (interface{}, error) {
 	wasmBytes, err := ioutil.ReadFile(wasmFile)
 	if err != nil {
 		return nil, fmt.Errorf("unable to load wasm file %q: %w", wasmFile, err)
@@ -300,7 +337,7 @@ func Simulate(env Environment, wasmFile string, entrypointName string, returns r
 		return nil, fmt.Errorf("unable to compile wasm file %q: %w", wasmFile, err)
 	}
 
-	importObject := newImports(env, store)
+	importObject := newImports(r.env, store)
 	instance, err := wasmer.NewInstance(module, importObject)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get wasm module instance from %q: %w", wasmFile, err)
@@ -311,7 +348,7 @@ func Simulate(env Environment, wasmFile string, entrypointName string, returns r
 		return nil, fmt.Errorf("unable to get the wasm module memory: %w", err)
 	}
 
-	env.SetMemory(memory)
+	r.env.SetMemory(memory)
 
 	if ztracer.Enabled() {
 		pages := memory.Size()
@@ -323,31 +360,26 @@ func Simulate(env Environment, wasmFile string, entrypointName string, returns r
 		)
 	}
 
-	entrypointFunction, err := instance.Exports.GetRawFunction(entrypointName)
+	entrypointFunction, err := instance.Exports.GetRawFunction(functionName)
 	if err != nil {
-		return nil, fmt.Errorf("unable to get wasm module entrypoint %q from %q: %w", entrypointName, wasmFile, err)
+		return nil, fmt.Errorf("unable to get wasm module function %q from %q: %w", functionName, wasmFile, err)
 	}
 
 	if ztracer.Enabled() {
-		zlog.Debug("entrypoint function loaded", zap.Stringer("def", namedFunctionDefinition{entrypointName, entrypointFunction}))
+		zlog.Debug("entrypoint function loaded", zap.Stringer("def", namedFunctionDefinition{functionName, entrypointFunction}))
 	}
-
-	//function, err := instance.Exports.GetFunction("memory.allocate")
-	//if err != nil {
-	//	return nil, fmt.Errorf("unable to get wasm memory allocate function: %w", err)
-	//}
 
 	heap := &AscHeap{
 		memory: memory,
-		allocator: func(i ...interface{}) (interface{}, error) { //todo: need and option for this
-			return int32(0), nil
-		},
+	}
+	if r.memoryAllocFactory != nil {
+		heap.allocator = r.memoryAllocFactory(instance)
 	}
 
-	result, err := callEntrypoint(heap, entrypointFunction, parameters...)
+	result, err := r.callFunction(heap, entrypointFunction, parameters...)
 
 	if err != nil {
-		return nil, fmt.Errorf("unable to execute wasm module entrypoint %q from %q: %w", entrypointName, wasmFile, err)
+		return nil, fmt.Errorf("unable to execute wasm module function %q from %q: %w", functionName, wasmFile, err)
 	}
 
 	//if traceMemoryEnabled {
@@ -363,7 +395,7 @@ func Simulate(env Environment, wasmFile string, entrypointName string, returns r
 	//fmt.Println(getAt(result))
 
 	zlog.Info("execution result", zap.Reflect("result", result))
-	return toGoValue(result, returns, env)
+	return toGoValue(result, returns, r.env)
 }
 
 func toGoValue(wasmValue interface{}, returns reflect.Type, env Environment) (interface{}, error) {
@@ -421,7 +453,7 @@ func (h *AscHeap) Write(bytes []byte) int32 {
 
 		result, err := h.allocator(int32(newSize))
 		if err != nil {
-			panic(fmt.Errorf("unable to allocate memory: %w", err))
+			panic(fmt.Errorf("unable to allocate memory: %w", err)) //todo: why? pas de panic tabar...
 		}
 
 		h.arenaStartPtr = result.(int32)
@@ -487,7 +519,7 @@ func (h AscBytes) ToPtr(heap *AscHeap) (int32, int32) {
 	return ptr, int32(size)
 }
 
-func callEntrypoint(heap *AscHeap, entrypoint *wasmer.Function, parameters ...interface{}) (out interface{}, err error) {
+func (r *Runtime) callFunction(heap *AscHeap, entrypoint *wasmer.Function, parameters ...interface{}) (out interface{}, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			switch x := r.(type) {
@@ -500,15 +532,15 @@ func callEntrypoint(heap *AscHeap, entrypoint *wasmer.Function, parameters ...in
 			}
 		}
 	}()
-	wasmParameters := toWASMParameters(heap, parameters)
+	wasmParameters := toWASMParameters(heap, parameters, r.pointerWithSize)
 
 	return entrypoint.Call(wasmParameters...)
 }
 
-func toWASMParameters(heap *AscHeap, parameters []interface{}) (out []interface{}) {
+func toWASMParameters(heap *AscHeap, parameters []interface{}, withSize bool) (out []interface{}) {
 	for _, parameter := range parameters {
 		wasmValue := toWASMValue(parameter)
-		size := int32(math.MaxInt32)
+		size := int32(math.MaxInt32) //not super clean
 		if v, ok := wasmValue.(AscPtr); ok {
 			wasmValue, size = v.ToPtr(heap)
 		}
@@ -519,8 +551,10 @@ func toWASMParameters(heap *AscHeap, parameters []interface{}) (out []interface{
 
 		out = append(out, wasmValue)
 
-		if size != int32(math.MaxInt32) {
-			out = append(out, size)
+		if withSize {
+			if size != int32(math.MaxInt32) {
+				out = append(out, size)
+			}
 		}
 	}
 
