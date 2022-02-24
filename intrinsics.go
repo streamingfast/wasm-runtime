@@ -80,12 +80,12 @@ var functions = []impl{
 		params(wasmer.I32, wasmer.I32, wasmer.I32, wasmer.I32),
 		returns(),
 		func(env Environment, args []wasmer.Value) ([]wasmer.Value, error) {
-			message, err := env.ReadString(args[0].I32())
+			message, err := env.ReadString(args[0].I32(), 0) // FIXME
 			if err != nil {
 				return nil, fmt.Errorf("read message argument: %w", err)
 			}
 
-			filename, err := env.ReadString(args[1].I32())
+			filename, err := env.ReadString(args[1].I32(), 0) // FIXME
 			if err != nil {
 				return nil, fmt.Errorf("read filename argument: %w", err)
 			}
@@ -119,12 +119,28 @@ var functions = []impl{
 		returns(),
 		func(env Environment, args []wasmer.Value) ([]wasmer.Value, error) {
 			level := args[0].I32()
-			message, err := env.ReadString(args[1].I32())
+			message, err := env.ReadString(args[1].I32(), 0) // FIXME
 			if err != nil {
 				return nil, fmt.Errorf("read message argument: %w", err)
 			}
 
 			env.RecordCall("index", "log.log", []interface{}{level, message}, nil)
+			return nil, nil
+		},
+	),
+
+	intrinsics(
+		"env", "println",
+		params(wasmer.I32, wasmer.I32),
+		returns(),
+		func(env Environment, args []wasmer.Value) ([]wasmer.Value, error) {
+			message, err := env.ReadString(args[0].I32(), args[1].I32())
+			if err != nil {
+				return nil, fmt.Errorf("read message argument: %w", err)
+			}
+
+			fmt.Println(message)
+
 			return nil, nil
 		},
 	),

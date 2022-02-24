@@ -69,9 +69,10 @@ func TestAssemblyScript(t *testing.T) {
 			recorder := &callRecorder{}
 			env := &wasm.DefaultEnvironment{CallRecorder: recorder}
 			var returns reflect.Type
-			if test.expected != nil {
-				returns = reflect.TypeOf(test.expected)
-			}
+			// FIXME
+			//if test.expected != nil {
+			//	returns = reflect.TypeOf(test.expected)
+			//}
 
 			memoryAllocationFactory := func(instance *wasmer.Instance) wasmer.NativeFunction {
 				function, err := instance.Exports.GetFunction("memory.allocate")
