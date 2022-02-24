@@ -102,7 +102,7 @@ func (e *DefaultEnvironment) ReadString(offset int32) (string, error) {
 		return "", fmt.Errorf("read content: %w", err)
 	}
 
-	if traceEnabled {
+	if ztracer.Enabled() {
 		zlog.Debug("read string content bytes", zap.Stringer("bytes", hexBytes(bytes)))
 	}
 
@@ -170,7 +170,7 @@ func (e *DefaultEnvironment) ReadI32s(offset int32) (out []int32, err error) {
 		return nil, fmt.Errorf("read i32 array length: %w", err)
 	}
 
-	if traceEnabled {
+	if ztracer.Enabled() {
 		zlog.Debug("resolving i32 array reference", zap.Int32("offset", arrayOffset), zap.Int32("length", length))
 	}
 
@@ -201,7 +201,7 @@ func (e *DefaultEnvironment) ReadStrings(offset int32) (out []string, err error)
 		return nil, fmt.Errorf("read string array length: %w", err)
 	}
 
-	if traceEnabled {
+	if ztracer.Enabled() {
 		zlog.Debug("resolving string array reference", zap.Int32("offset", arrayOffset), zap.Int32("length", length))
 	}
 
@@ -235,7 +235,7 @@ func (e *DefaultEnvironment) readI32(tag string, offset int32) (int32, error) {
 	// It's an actual i32 here, should we parse it differently than a Uint32?
 	out := int32(encoding.Uint32(bytes))
 
-	if traceEnabled {
+	if ztracer.Enabled() {
 		zlog.Debug("read "+tag+" i32 bytes", zap.Int32("value", out), zap.Stringer("bytes", hexBytes(bytes)), zap.Int32("offset", offset))
 	}
 
@@ -249,7 +249,7 @@ func (e *DefaultEnvironment) readU32(tag string, offset int32) (uint32, error) {
 	}
 
 	out := encoding.Uint32(bytes)
-	if traceEnabled {
+	if ztracer.Enabled() {
 		zlog.Debug("read "+tag+" u32 bytes", zap.Uint32("value", out), zap.Stringer("bytes", hexBytes(bytes)), zap.Int32("offset", offset))
 	}
 
@@ -265,7 +265,7 @@ func (e *DefaultEnvironment) readI64(tag string, offset int32) (int64, error) {
 	// It's an actual i64 here, should we parse it differently than a Uint64?
 	out := int64(encoding.Uint64(bytes))
 
-	if traceEnabled {
+	if ztracer.Enabled() {
 		zlog.Debug("read "+tag+" i64 bytes", zap.Int64("value", out), zap.Stringer("bytes", hexBytes(bytes)))
 	}
 
@@ -313,7 +313,7 @@ func Simulate(env Environment, wasmFile string, entrypointName string, returns r
 
 	env.SetMemory(memory)
 
-	if traceEnabled {
+	if ztracer.Enabled() {
 		pages := memory.Size()
 
 		zlog.Debug("memory information for invocation",
@@ -328,7 +328,7 @@ func Simulate(env Environment, wasmFile string, entrypointName string, returns r
 		return nil, fmt.Errorf("unable to get wasm module entrypoint %q from %q: %w", entrypointName, wasmFile, err)
 	}
 
-	if traceEnabled {
+	if ztracer.Enabled() {
 		zlog.Debug("entrypoint function loaded", zap.Stringer("def", namedFunctionDefinition{entrypointName, entrypointFunction}))
 	}
 
@@ -350,9 +350,9 @@ func Simulate(env Environment, wasmFile string, entrypointName string, returns r
 		return nil, fmt.Errorf("unable to execute wasm module entrypoint %q from %q: %w", entrypointName, wasmFile, err)
 	}
 
-	if traceMemoryEnabled {
-		fmt.Println(env.(*DefaultEnvironment).Debug())
-	}
+	//if traceMemoryEnabled {
+	//	fmt.Println(env.(*DefaultEnvironment).Debug())
+	//}
 
 	//getAt, err := instance.Exports.GetFunction("get_at")
 	//
@@ -437,7 +437,7 @@ func (h *AscHeap) Write(bytes []byte) int32 {
 	h.arenaStartPtr += int32(size)
 	h.arenaFreeSize -= size
 
-	if traceEnabled {
+	if ztracer.Enabled() {
 		zlog.Debug("memory object written", zap.Int32("data_ptr", ptr), zap.Int32("arena_start_ptr", h.arenaStartPtr), zap.Int("arena_free_size", h.arenaFreeSize))
 	}
 
@@ -513,7 +513,7 @@ func toWASMParameters(heap *AscHeap, parameters []interface{}) (out []interface{
 			wasmValue, size = v.ToPtr(heap)
 		}
 
-		if traceEnabled {
+		if ztracer.Enabled() {
 			zlog.Debug("converted parameter to wasm value", zap.Stringer("original", typedField{parameter}), zap.Stringer("wasm", typedField{wasmValue}))
 		}
 

@@ -35,7 +35,7 @@ func newImports(runtimeEnv Environment, store *wasmer.Store) *wasmer.ImportObjec
 		for _, i := range impls {
 			impl := i
 			function := impl.function
-			if traceEnabled {
+			if ztracer.Enabled() {
 				function = func(env Environment, args []wasmer.Value) (out []wasmer.Value, err error) {
 					name := impl.module + "/" + impl.name
 					defer func() { zlog.Debug("terminated "+name+" returned "+valueSet(out).String(), zap.Error(err)) }()
