@@ -19,3 +19,4 @@ testing/assembly_scripts/node_modules/
 testing/assembly_scripts/build/
 /testing/rust_scripts/hello/.idea/
 /testing/rust_scripts/hello/target/
+/testing/rust_scripts/bigBytes/target/
