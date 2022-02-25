@@ -108,7 +108,7 @@ func (r *Runtime) Execute(wasmFile string, functionName string, returnType refle
 		heap.allocator = r.memoryAllocFactory(instance)
 	}
 
-	result, err := r.callFunction(heap, entrypointFunction, parameters, returns...)
+	result, err := r.callFunction(heap, entrypointFunction, parameters, returns)
 
 	if err != nil {
 		return nil, fmt.Errorf("unable to execute wasm module function %q from %q: %w", functionName, wasmFile, err)
@@ -244,7 +244,6 @@ func (v *AscReturnValue) ReadData(env Environment) ([]byte, error) {
 	}
 
 	return env.ReadBytes(ptr, length)
-
 }
 
 type AscString string
@@ -272,7 +271,7 @@ func (h AscBytes) ToPtr(heap *AscHeap) (int32, int32) {
 	return ptr, int32(size)
 }
 
-func (r *Runtime) callFunction(heap *AscHeap, entrypoint *wasmer.Function, parameters []interface{}, returns ...*AscReturnValue) (out interface{}, err error) {
+func (r *Runtime) callFunction(heap *AscHeap, entrypoint *wasmer.Function, parameters []interface{}, returns []*AscReturnValue) (out interface{}, err error) {
 	//defer func() {
 	//	if r := recover(); r != nil {
 	//		switch x := r.(type) {

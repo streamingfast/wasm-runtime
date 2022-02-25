@@ -21,7 +21,7 @@ func TestAssemblyScript(t *testing.T) {
 		expectedErr   error
 	}{
 		{
-			wasmFile:     "/Users/cbillett/devel/sf/wasm-runtime/testing/rust_scripts/hello/target/wasm32-unknown-unknown/release/hello_wasm.wasm",
+			wasmFile:     "./testdata/hello_wasm.wasm",
 			functionName: "hello",
 			parameters:   []interface{}{"Charles"},
 			expected:     int32(42),
@@ -52,6 +52,7 @@ func TestAssemblyScript(t *testing.T) {
 			ret2 := wasm.NewAscReturnValue("test.2")
 
 			actual, err := runtime.Execute(test.wasmFile, test.functionName, returns, test.parameters, ret, ret2)
+
 			data, err := ret.ReadData(env)
 			require.NoError(t, err)
 			fmt.Println("received data as string:", string(data))

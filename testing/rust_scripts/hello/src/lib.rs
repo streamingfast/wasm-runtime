@@ -32,8 +32,10 @@ pub extern "C" fn hello(ptr: *const u8, len: usize, output: &mut (*const u8, usi
         println(HELLO.as_ptr(), HELLO.len());
     }
 
-    output.0 = formated.as_ptr();
-    output.1 = formated.len();
+    let from_within = format!("This {}, comes from within", string_from_host);
+    
+    output.0 = from_within.as_ptr();
+    output.1 = from_within.len();
 
     output2.0 = string_from_host.as_ptr();
     output2.1 = string_from_host.len();
