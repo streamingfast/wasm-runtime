@@ -26,6 +26,12 @@ func TestAssemblyScript(t *testing.T) {
 			parameters:   []interface{}{"Charles"},
 			expected:     int32(42),
 		},
+		{
+			wasmFile:     "/Users/eduardvoiculescu/git/wasm-runtime/testing/rust_scripts/bigBytes/target/wasm32-unknown-unknown/release/bigBytes_wasm.wasm",
+			functionName: "read_big_bytes",
+			parameters:   []interface{}{createBytesArray(1200)}, // max is 1087, anything above will break
+			expected:     nil,
+		},
 	}
 
 	for _, test := range tests {
@@ -36,22 +42,12 @@ func TestAssemblyScript(t *testing.T) {
 			if test.expected != nil {
 				returns = reflect.TypeOf(test.expected)
 			}
-
-			//memoryAllocationFactory := func(instance *wasmer.Instance) wasmer.NativeFunction {
-			//	function, err := instance.Exports.GetFunction("memory.allocate")
-			//	if err != nil {
-			//		panic(fmt.Errorf("getting memory.allocate func: %w", err))
-			//	}
-			//	return function
-			//}
-
-			//runtime := wasm.NewRuntime(env, wasm.WithMemoryAllocationFactory(memoryAllocationFactory))
 			runtime := wasm.NewRuntime(env, wasm.WithParameterPointSize())
 
 			ret := wasm.NewAscReturnValue("test.1")
 			ret2 := wasm.NewAscReturnValue("test.2")
 
-			actual, err := runtime.Execute(test.wasmFile, test.functionName, returns, test.parameters, ret, ret2)
+			actual, err := runtime.Execute(test.wasmFile, test.functionName, returns, test.parameters, ret)
 
 			data, err := ret.ReadData(env)
 			require.NoError(t, err)
@@ -100,4 +96,9 @@ func (r *callRecorder) String() string {
 	}
 
 	return strings.Join(values, ",")
+}
+
+// 1 -> 1KB, 1 000 -> 1MB, 1 000 000 -> 1GB
+func createBytesArray(size int32) []byte {
+	return make([]byte, size*1024)
 }

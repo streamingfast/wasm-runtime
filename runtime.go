@@ -100,10 +100,7 @@ func (r *Runtime) Execute(wasmFile string, functionName string, returnType refle
 		zlog.Debug("entrypoint function loaded", zap.Stringer("def", namedFunctionDefinition{functionName, entrypointFunction}))
 	}
 
-	heap := &AscHeap{
-		memory:        memory,
-		arenaFreeSize: len(memory.Data()),
-	}
+	heap := newAscHeap(memory)
 	if r.memoryAllocFactory != nil {
 		heap.allocator = r.memoryAllocFactory(instance)
 	}
@@ -168,43 +165,36 @@ func toGoValue(wasmValue interface{}, returns reflect.Type, env Environment) (in
 }
 
 type AscHeap struct {
-	memory        *wasmer.Memory
-	allocator     wasmer.NativeFunction
-	arenaStartPtr int32
-	arenaFreeSize int
+	memory          *wasmer.Memory
+	allocator       wasmer.NativeFunction
+	nextPtrLocation int32
+	freeSpace       uint
 }
 
-const MIN_ARENA_SIZE = 10000
+func newAscHeap(memory *wasmer.Memory) *AscHeap {
+	return &AscHeap{
+		memory:    memory,
+		freeSpace: memory.DataSize(),
+	}
+}
 
 func (h *AscHeap) Write(bytes []byte) int32 {
 	size := len(bytes)
-	if size > h.arenaFreeSize {
-		newSize := size
-		if newSize < MIN_ARENA_SIZE {
-			newSize = MIN_ARENA_SIZE
-		}
 
-		result, err := h.allocator(int32(newSize))
-		if err != nil {
-			panic(fmt.Errorf("unable to allocate memory: %w", err)) //todo: why? pas de panic tabar...
-		}
-
-		h.arenaStartPtr = result.(int32)
-		h.arenaFreeSize = newSize
-
-		zlog.Debug("memory allocated", zap.Int32("arena_start_ptr", h.arenaStartPtr), zap.Int("arena_free_size", newSize))
+	if uint(size) > h.freeSpace {
+		fmt.Println("memory grown")
+		numberOfPages := uint(size) / wasmer.WasmPageSize
+		h.memory.Grow(wasmer.Pages(numberOfPages) + 1)
+		h.freeSpace += wasmer.WasmPageSize
 	}
 
-	ptr := h.arenaStartPtr
+	ptr := h.nextPtrLocation
+
 	memoryData := h.memory.Data()
 	copy(memoryData[ptr:], bytes)
 
-	h.arenaStartPtr += int32(size)
-	h.arenaFreeSize -= size
-
-	if ztracer.Enabled() {
-		zlog.Debug("memory object written", zap.Int32("data_ptr", ptr), zap.Int32("arena_start_ptr", h.arenaStartPtr), zap.Int("arena_free_size", h.arenaFreeSize))
-	}
+	h.nextPtrLocation += int32(size)
+	h.freeSpace -= uint(size)
 
 	return ptr
 }
@@ -281,10 +271,9 @@ func (r *Runtime) callFunction(heap *AscHeap, entrypoint *wasmer.Function, param
 	//			err = x
 	//		default:
 	//			err = errors.New("Unknown panic")
-	//		}
+	//		}hello_wasm.wasm
 	//	}
 	//}()
-	mem := r.env.GetMemory()
 
 	wasmParameters := toWASMParameters(heap, parameters, r.pointerWithSize)
 
@@ -294,6 +283,7 @@ func (r *Runtime) callFunction(heap *AscHeap, entrypoint *wasmer.Function, param
 		wasmParameters = append(wasmParameters, ptr)
 	}
 
+	mem := r.env.GetMemory()
 	printMem(mem)
 	out, err = entrypoint.Call(wasmParameters...)
 	printMem(mem)
