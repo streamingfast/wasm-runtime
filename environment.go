@@ -4,8 +4,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"unicode/utf16"
-
 	"github.com/wasmerio/wasmer-go/wasmer"
 	"go.uber.org/zap"
 )
@@ -47,30 +45,11 @@ func (e *RustEnvironment) ReadBytes(offset int32, length int32) ([]byte, error) 
 }
 
 func (e *RustEnvironment) ReadString(offset int32, len int32) (string, error) {
-	e.LogSegment("Data +size type?", offset-12, 16)
-
-	characterCount, err := e.readI32("string length", offset)
-	if err != nil {
-		return "", fmt.Errorf("read length: %w", err)
-	}
-
-	offset += 4
-	bytes, err := e.segment(offset, characterCount*2)
+	bytes, err := e.segment(offset, len)
 	if err != nil {
 		return "", fmt.Errorf("read content: %w", err)
 	}
-
-	if ztracer.Enabled() {
-		zlog.Debug("read string content bytes", zap.Stringer("bytes", hexBytes(bytes)))
-	}
-
-	characters := make([]uint16, characterCount)
-	for i := int32(0); i < characterCount; i++ {
-		offset := i * 2
-		characters[i] = uint16(bytes[offset+1])<<8 | uint16(bytes[offset])
-	}
-
-	return string(utf16.Decode(characters)), nil
+	return string(bytes), nil
 }
 
 func (e *RustEnvironment) ReadI32(offset int32) (int32, error) {
