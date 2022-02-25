@@ -31,7 +31,7 @@ func TestAssemblyScript(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.wasmFile, func(t *testing.T) {
 			recorder := &callRecorder{}
-			env := &wasm.DefaultEnvironment{CallRecorder: recorder}
+			env := wasm.NewRustEnvironment(&wasm.DefaultEnvironment{CallRecorder: recorder})
 			var returns reflect.Type
 			if test.expected != nil {
 				returns = reflect.TypeOf(test.expected)

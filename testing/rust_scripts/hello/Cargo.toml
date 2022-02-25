@@ -2,12 +2,12 @@
 name = "hello-wasm"
 version = "0.1.0"
 description = "A sample project with block wasm"
-license = "MIT/Apache-2.0"
 edition = "2018"
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
+wasm-bindgen = "0.2.79"
 
 [build-dependencies]

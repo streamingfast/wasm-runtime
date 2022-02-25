@@ -1,12 +1,12 @@
 package wasm
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"math"
 	"reflect"
-	"unicode/utf16"
 
 	"github.com/wasmerio/wasmer-go/wasmer"
 	"go.uber.org/zap"
@@ -20,7 +20,7 @@ type abortError struct {
 }
 
 func (e *abortError) Error() string {
-	return fmt.Sprintf("wasm execution aborted at %s:%d:%d: %s", e.filename, e.lineNumber, e.columnNumber, e.message)
+	return fmt.Sprintf("wasm execution aborted at %s:%env:%env: %s", e.filename, e.lineNumber, e.columnNumber, e.message)
 }
 
 type MemoryAllocationFactory func(instance *wasmer.Instance) wasmer.NativeFunction
@@ -53,11 +53,6 @@ func NewRuntime(env Environment, options ...RuntimeOption) *Runtime {
 		option(runtime)
 	}
 	return runtime
-}
-
-//Deprecated
-func (r *Runtime) Simulate(wasmFile string, entrypointName string, returns reflect.Type, parameters ...interface{}) (interface{}, error) {
-	return r.Execute(wasmFile, entrypointName, returns, parameters)
 }
 
 func (r *Runtime) Execute(wasmFile string, functionName string, returns reflect.Type, parameters ...interface{}) (interface{}, error) {
@@ -137,40 +132,40 @@ func (r *Runtime) Execute(wasmFile string, functionName string, returns reflect.
 }
 
 func toGoValue(wasmValue interface{}, returns reflect.Type, env Environment) (interface{}, error) {
-	if returns == nil {
-		return wasmValue, nil
-	}
+	//if returns == nil {
+	return wasmValue, nil
+	//}
 
-	switch returns.Kind() {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		// Already converted by Wasmer
-		return wasmValue, nil
-
-	case reflect.Slice:
-		if returns.Elem().Kind() == reflect.Uint8 {
-			out, err := env.ReadBytes(wasmValue.(int32))
-			if err != nil {
-				return nil, fmt.Errorf("read bytes: %w", err)
-			}
-
-			return out, nil
-		}
-
-		// FIXME: Deals with all kind of arrays?
-		return nil, fmt.Errorf("unhandled return kind slice of %s", returns.Elem().Kind())
-
-	case reflect.String:
-		panic("must handle length here") // FIXME
-		//out, err := env.ReadString(wasmValue.(int32), 0)
-		//if err != nil {
-		//	return nil, fmt.Errorf("read string: %w", err)
-		//}
-		//return out, nil
-
-	default:
-		return nil, fmt.Errorf("unhandled return kind %s", returns.Kind())
-	}
+	//switch returns.Kind() {
+	//case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+	//	reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+	//	// Already converted by Wasmer
+	//	return wasmValue, nil
+	//
+	//case reflect.Slice:
+	//	if returns.Elem().Kind() == reflect.Uint8 {
+	//		out, err := env.ReadBytes(wasmValue.(int32))
+	//		if err != nil {
+	//			return nil, fmt.Errorf("read bytes: %w", err)
+	//		}
+	//
+	//		return out, nil
+	//	}
+	//
+	//	// FIXME: Deals with all kind of arrays?
+	//	return nil, fmt.Errorf("unhandled return kind slice of %s", returns.Elem().Kind())
+	//
+	//case reflect.String:
+	//	panic("must handle length here") // FIXME
+	//	//out, err := env.ReadString(wasmValue.(int32), 0)
+	//	//if err != nil {
+	//	//	return nil, fmt.Errorf("read string: %w", err)
+	//	//}
+	//	//return out, nil
+	//
+	//default:
+	//	return nil, fmt.Errorf("unhandled return kind %s", returns.Kind())
+	//}
 }
 
 type AscHeap struct {
@@ -219,25 +214,19 @@ type AscPtr interface {
 	ToPtr(heap *AscHeap) (int32, int32)
 }
 
+type AscRetPtr int32
+
+func (h AscRetPtr) ToPtr(heap *AscHeap) (int32, int32) {
+	bs := make([]byte, 8)
+	binary.LittleEndian.PutUint32(bs, uint32(h))
+	return heap.Write(bs), int32(len(bs))
+}
+
 type AscString string
 
 func (h AscString) ToPtr(heap *AscHeap) (int32, int32) {
-	// 4 bytes for the lenght of the string, len * 2 (each character is encoded as a uint16)
-	size := 4 + len(h)*2
-	bytes := make([]byte, size)
-
-	encoding.PutUint32(bytes, uint32(len(h)))
-	stringBytes := bytes[4:]
-
-	characters := utf16.Encode([]rune(h))
-	for i, b := range characters {
-		offset := i * 2
-
-		stringBytes[offset] = byte(b & 0x00FF)
-		stringBytes[offset+1] = byte((b & 0xFF00) >> 8)
-	}
-
-	return heap.Write(bytes), int32(size)
+	bytes := []byte(h)
+	return heap.Write(bytes), int32(len(bytes))
 }
 
 type AscBytes []byte
@@ -271,9 +260,54 @@ func (r *Runtime) callFunction(heap *AscHeap, entrypoint *wasmer.Function, param
 	//		}
 	//	}
 	//}()
-	wasmParameters := toWASMParameters(heap, parameters, r.pointerWithSize)
+	mem := r.env.GetMemory()
 
-	return entrypoint.Call(wasmParameters...)
+	wasmParameters := toWASMParameters(heap, parameters, r.pointerWithSize)
+	ret := AscRetPtr(99)
+	retPtr, _ := ret.ToPtr(heap)
+	wasmParameters = append(wasmParameters, retPtr)
+
+	printMem(mem)
+	out, err = entrypoint.Call(wasmParameters...)
+	printMem(mem)
+	ptr, len, err := r.getReturnPtrLength(retPtr)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println("ptr:", ptr, len)
+
+	returnValue, err := r.env.ReadBytes(ptr, len)
+	if err != nil {
+		return nil, fmt.Errorf("reading return value: %w", err)
+	}
+	fmt.Println("->", string(returnValue))
+	return
+}
+
+func (r *Runtime) getReturnPtrLength(valueLocation int32) (ptr int32, length int32, err error) {
+	ptr, err = r.env.ReadI32(valueLocation)
+	if err != nil {
+		err = fmt.Errorf("getting return value pointer: %w", err)
+		return
+	}
+	length, err = r.env.ReadI32(valueLocation + 4)
+	if err != nil {
+		err = fmt.Errorf("getting return value length: %w", err)
+		return
+	}
+	return
+}
+
+func printMem(memory *wasmer.Memory) {
+	data := memory.Data()
+	for i, datum := range data {
+		if i > 1024 {
+			if datum == 0 {
+				continue
+			}
+		}
+		fmt.Print(datum, ", ")
+	}
 }
 
 func toWASMParameters(heap *AscHeap, parameters []interface{}, withSize bool) (out []interface{}) {

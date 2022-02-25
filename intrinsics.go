@@ -96,39 +96,6 @@ var functions = []impl{
 			return nil, &abortError{message, filename, lineNumber, columnNumber}
 		},
 	),
-
-	/// Index module
-
-	intrinsics(
-		"index", "typeConversion.bytesToHex",
-		params(wasmer.I32),
-		returns(wasmer.I32),
-		func(env Environment, args []wasmer.Value) ([]wasmer.Value, error) {
-			_, err := env.ReadBytes(args[0].I32())
-			if err != nil {
-				return nil, fmt.Errorf("read messages argument: %w", err)
-			}
-
-			return []wasmer.Value{wasmer.NewI32(0)}, nil
-		},
-	),
-
-	intrinsics(
-		"index", "log.log",
-		params(wasmer.I32, wasmer.I32),
-		returns(),
-		func(env Environment, args []wasmer.Value) ([]wasmer.Value, error) {
-			level := args[0].I32()
-			message, err := env.ReadString(args[1].I32(), 0) // FIXME
-			if err != nil {
-				return nil, fmt.Errorf("read message argument: %w", err)
-			}
-
-			env.RecordCall("index", "log.log", []interface{}{level, message}, nil)
-			return nil, nil
-		},
-	),
-
 	intrinsics(
 		"env", "println",
 		params(wasmer.I32, wasmer.I32),
