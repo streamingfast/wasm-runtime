@@ -172,6 +172,9 @@ type AscHeap struct {
 }
 
 func newAscHeap(memory *wasmer.Memory) *AscHeap {
+	if len(memory.Data()) != int(memory.DataSize()) {
+		panic("ALSKDJ")
+	}
 	return &AscHeap{
 		memory:    memory,
 		freeSpace: memory.DataSize(),
@@ -183,9 +186,12 @@ func (h *AscHeap) Write(bytes []byte) int32 {
 
 	if uint(size) > h.freeSpace {
 		fmt.Println("memory grown")
-		numberOfPages := uint(size) / wasmer.WasmPageSize
-		h.memory.Grow(wasmer.Pages(numberOfPages) + 1)
-		h.freeSpace += wasmer.WasmPageSize
+		numberOfPages := (uint(size) / wasmer.WasmPageSize) + 1
+		grown := h.memory.Grow(wasmer.Pages(numberOfPages))
+		if !grown {
+			panic("couldn't grow memory")
+		}
+		h.freeSpace += (wasmer.WasmPageSize * numberOfPages)
 	}
 
 	ptr := h.nextPtrLocation
@@ -271,7 +277,7 @@ func (r *Runtime) callFunction(heap *AscHeap, entrypoint *wasmer.Function, param
 	//			err = x
 	//		default:
 	//			err = errors.New("Unknown panic")
-	//		}hello_wasm.wasm
+	//		}
 	//	}
 	//}()
 

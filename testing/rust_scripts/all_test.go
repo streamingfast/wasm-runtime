@@ -47,7 +47,7 @@ func TestAssemblyScript(t *testing.T) {
 			ret := wasm.NewAscReturnValue("test.1")
 			ret2 := wasm.NewAscReturnValue("test.2")
 
-			actual, err := runtime.Execute(test.wasmFile, test.functionName, returns, test.parameters, ret)
+			actual, err := runtime.Execute(test.wasmFile, test.functionName, returns, test.parameters, ret, ret2)
 
 			data, err := ret.ReadData(env)
 			require.NoError(t, err)
