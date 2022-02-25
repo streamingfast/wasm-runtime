@@ -1,7 +1,6 @@
 package wasm
 
 import (
-	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
@@ -55,7 +54,7 @@ func NewRuntime(env Environment, options ...RuntimeOption) *Runtime {
 	return runtime
 }
 
-func (r *Runtime) Execute(wasmFile string, functionName string, returns reflect.Type, parameters ...interface{}) (interface{}, error) {
+func (r *Runtime) Execute(wasmFile string, functionName string, returnType reflect.Type, parameters []interface{}, returns ...*AscReturnValue) (interface{}, error) {
 	wasmBytes, err := ioutil.ReadFile(wasmFile)
 	if err != nil {
 		return nil, fmt.Errorf("unable to load wasm file %q: %w", wasmFile, err)
@@ -109,7 +108,7 @@ func (r *Runtime) Execute(wasmFile string, functionName string, returns reflect.
 		heap.allocator = r.memoryAllocFactory(instance)
 	}
 
-	result, err := r.callFunction(heap, entrypointFunction, parameters...)
+	result, err := r.callFunction(heap, entrypointFunction, parameters, returns...)
 
 	if err != nil {
 		return nil, fmt.Errorf("unable to execute wasm module function %q from %q: %w", functionName, wasmFile, err)
@@ -128,7 +127,7 @@ func (r *Runtime) Execute(wasmFile string, functionName string, returns reflect.
 	//fmt.Println(getAt(result))
 
 	zlog.Info("execution result", zap.Reflect("result", result))
-	return toGoValue(result, returns, r.env)
+	return toGoValue(result, returnType, r.env)
 }
 
 func toGoValue(wasmValue interface{}, returns reflect.Type, env Environment) (interface{}, error) {
@@ -214,12 +213,38 @@ type AscPtr interface {
 	ToPtr(heap *AscHeap) (int32, int32)
 }
 
-type AscRetPtr int32
+type AscReturnValue struct {
+	name string
+	ptr  int32
+}
 
-func (h AscRetPtr) ToPtr(heap *AscHeap) (int32, int32) {
+func NewAscReturnValue(name string) *AscReturnValue {
+	return &AscReturnValue{
+		name: name,
+	}
+}
+
+func (v *AscReturnValue) ToPtr(heap *AscHeap) (int32, int32) {
 	bs := make([]byte, 8)
-	binary.LittleEndian.PutUint32(bs, uint32(h))
-	return heap.Write(bs), int32(len(bs))
+	ptr := heap.Write(bs)
+	v.ptr = ptr
+	return ptr, int32(len(bs))
+}
+
+func (v *AscReturnValue) ReadData(env Environment) ([]byte, error) {
+	//fmt.Printf("reading data for %s @ %d\n", v.name, v.ptr)
+	ptr, err := env.ReadI32(v.ptr)
+	if err != nil {
+		return nil, fmt.Errorf("getting [%s] return value pointer: %w", v.name, err)
+
+	}
+	length, err := env.ReadI32(v.ptr + 4)
+	if err != nil {
+		return nil, fmt.Errorf("getting [%s] return value length: %w", v.name, err)
+	}
+
+	return env.ReadBytes(ptr, length)
+
 }
 
 type AscString string
@@ -247,7 +272,7 @@ func (h AscBytes) ToPtr(heap *AscHeap) (int32, int32) {
 	return ptr, int32(size)
 }
 
-func (r *Runtime) callFunction(heap *AscHeap, entrypoint *wasmer.Function, parameters ...interface{}) (out interface{}, err error) {
+func (r *Runtime) callFunction(heap *AscHeap, entrypoint *wasmer.Function, parameters []interface{}, returns ...*AscReturnValue) (out interface{}, err error) {
 	//defer func() {
 	//	if r := recover(); r != nil {
 	//		switch x := r.(type) {
@@ -263,24 +288,17 @@ func (r *Runtime) callFunction(heap *AscHeap, entrypoint *wasmer.Function, param
 	mem := r.env.GetMemory()
 
 	wasmParameters := toWASMParameters(heap, parameters, r.pointerWithSize)
-	ret := AscRetPtr(99)
-	retPtr, _ := ret.ToPtr(heap)
-	wasmParameters = append(wasmParameters, retPtr)
+
+	for _, returnValue := range returns {
+		ptr, _ := returnValue.ToPtr(heap)
+		fmt.Println("return pointer created @:", ptr)
+		wasmParameters = append(wasmParameters, ptr)
+	}
 
 	printMem(mem)
 	out, err = entrypoint.Call(wasmParameters...)
 	printMem(mem)
-	ptr, len, err := r.getReturnPtrLength(retPtr)
-	if err != nil {
-		return nil, err
-	}
-	fmt.Println("ptr:", ptr, len)
 
-	returnValue, err := r.env.ReadBytes(ptr, len)
-	if err != nil {
-		return nil, fmt.Errorf("reading return value: %w", err)
-	}
-	fmt.Println("->", string(returnValue))
 	return
 }
 
@@ -308,6 +326,7 @@ func printMem(memory *wasmer.Memory) {
 		}
 		fmt.Print(datum, ", ")
 	}
+	println("")
 }
 
 func toWASMParameters(heap *AscHeap, parameters []interface{}, withSize bool) (out []interface{}) {

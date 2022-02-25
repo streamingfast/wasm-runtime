@@ -14,7 +14,7 @@ pub struct Ptr {
 }
 
 #[no_mangle]
-pub extern "C" fn hello(ptr: *const u8, len: usize, output: &mut (*const u8, usize) ) {
+pub extern "C" fn hello(ptr: *const u8, len: usize, output: &mut (*const u8, usize), output2: &mut (*const u8, usize) ) -> i32 {
     let slice = unsafe { slice::from_raw_parts(ptr as _, len as _) };
     let string_from_host = str::from_utf8(&slice).unwrap();
 
@@ -35,4 +35,8 @@ pub extern "C" fn hello(ptr: *const u8, len: usize, output: &mut (*const u8, usi
     output.0 = formated.as_ptr();
     output.1 = formated.len();
 
+    output2.0 = string_from_host.as_ptr();
+    output2.1 = string_from_host.len();
+
+    42
 }

@@ -24,7 +24,7 @@ func TestAssemblyScript(t *testing.T) {
 			wasmFile:     "/Users/cbillett/devel/sf/wasm-runtime/testing/rust_scripts/hello/target/wasm32-unknown-unknown/release/hello_wasm.wasm",
 			functionName: "hello",
 			parameters:   []interface{}{"Charles"},
-			expected:     "Hello Charles",
+			expected:     int32(42),
 		},
 	}
 
@@ -48,7 +48,16 @@ func TestAssemblyScript(t *testing.T) {
 			//runtime := wasm.NewRuntime(env, wasm.WithMemoryAllocationFactory(memoryAllocationFactory))
 			runtime := wasm.NewRuntime(&env, wasm.WithParameterPointSize())
 
-			actual, err := runtime.Execute(test.wasmFile, test.functionName, returns, test.parameters...)
+			ret := wasm.NewAscReturnValue("test.1")
+			ret2 := wasm.NewAscReturnValue("test.2")
+
+			actual, err := runtime.Execute(test.wasmFile, test.functionName, returns, test.parameters, ret, ret2)
+			data, err := ret.ReadData(env)
+			require.NoError(t, err)
+			fmt.Println("received data as string:", string(data))
+			data2, err := ret2.ReadData(env)
+			require.NoError(t, err)
+			fmt.Println("received data2 as string:", string(data2))
 
 			if test.expectedErr == nil {
 				require.NoError(t, err)
