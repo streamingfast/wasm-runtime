@@ -31,7 +31,7 @@ func TestAssemblyScript(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.wasmFile, func(t *testing.T) {
 			recorder := &callRecorder{}
-			env := wasm.RustEnvironment{CallRecorder: recorder}
+			env := &wasm.RustEnvironment{CallRecorder: recorder}
 			var returns reflect.Type
 			if test.expected != nil {
 				returns = reflect.TypeOf(test.expected)
@@ -46,7 +46,7 @@ func TestAssemblyScript(t *testing.T) {
 			//}
 
 			//runtime := wasm.NewRuntime(env, wasm.WithMemoryAllocationFactory(memoryAllocationFactory))
-			runtime := wasm.NewRuntime(&env, wasm.WithParameterPointSize())
+			runtime := wasm.NewRuntime(env, wasm.WithParameterPointSize())
 
 			ret := wasm.NewAscReturnValue("test.1")
 			ret2 := wasm.NewAscReturnValue("test.2")
