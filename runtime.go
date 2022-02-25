@@ -20,7 +20,7 @@ type abortError struct {
 }
 
 func (e *abortError) Error() string {
-	return fmt.Sprintf("wasm execution aborted at %s:%env:%env: %s", e.filename, e.lineNumber, e.columnNumber, e.message)
+	return fmt.Sprintf("wasm execution aborted at %s:%d env:%d env: %s", e.filename, e.lineNumber, e.columnNumber, e.message)
 }
 
 type MemoryAllocationFactory func(instance *wasmer.Instance) wasmer.NativeFunction
