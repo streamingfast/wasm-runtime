@@ -3,7 +3,7 @@
 version = 3
 
 [[package]]
-name = "bigBytes-wasm"
+name = "big_bytes_wasm"
 version = "0.1.0"
 dependencies = [
  "wasm-bindgen",

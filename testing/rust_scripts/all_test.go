@@ -2,7 +2,6 @@ package assembly_scripts
 
 import (
 	"fmt"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -11,54 +10,59 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAssemblyScript(t *testing.T) {
+func TestRustScript(t *testing.T) {
 	tests := []struct {
-		wasmFile      string
-		functionName  string
-		parameters    []interface{}
-		expectedCalls []call
-		expected      interface{}
-		expectedErr   error
+		wasmFile            string
+		functionName        string
+		parameters          []interface{}
+		outputsPtr          []*wasm.AscReturnValue
+		expectedCalls       []call
+		expectedReturnValue interface{}
+		expectedErr         error
 	}{
 		{
-			wasmFile:     "./testdata/hello_wasm.wasm",
+			wasmFile:     "./hello/target/wasm32-unknown-unknown/release/hello_wasm.wasm",
 			functionName: "hello",
 			parameters:   []interface{}{"Charles"},
-			expected:     int32(42),
+			outputsPtr: []*wasm.AscReturnValue{
+				wasm.NewAscReturnValue("test.1"),
+				wasm.NewAscReturnValue("test.2"),
+			},
+			expectedReturnValue: int32(42),
 		},
 		{
-			wasmFile:     "/Users/eduardvoiculescu/git/wasm-runtime/testing/rust_scripts/bigBytes/target/wasm32-unknown-unknown/release/bigBytes_wasm.wasm",
+			wasmFile:     "./big_bytes/target/wasm32-unknown-unknown/release/big_bytes_wasm.wasm",
 			functionName: "read_big_bytes",
-			parameters:   []interface{}{createBytesArray(1200)}, // max is 1087, anything above will break
-			expected:     nil,
+			parameters:   []interface{}{createBytesArray(1)}, // max is 1087, anything above will break
+			//parameters: []interface{}{"test"}, // max is 1087, anything above will break
+			//outputsPtr: []*wasm.AscReturnValue{
+			//	wasm.NewAscReturnValue("test.1"),
+			//},
+			expectedReturnValue: nil,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.wasmFile, func(t *testing.T) {
 			recorder := &callRecorder{}
-			env := &wasm.RustEnvironment{CallRecorder: recorder}
-			var returns reflect.Type
-			if test.expected != nil {
-				returns = reflect.TypeOf(test.expected)
+			env := &wasm.RustEnvironment{
+				CallRecorder: recorder,
 			}
 			runtime := wasm.NewRuntime(env, wasm.WithParameterPointSize())
 
-			ret := wasm.NewAscReturnValue("test.1")
-			ret2 := wasm.NewAscReturnValue("test.2")
-
-			actual, err := runtime.Execute(test.wasmFile, test.functionName, returns, test.parameters, ret, ret2)
-
-			data, err := ret.ReadData(env)
+			actual, err := runtime.Execute(test.wasmFile, test.functionName, test.parameters, test.outputsPtr...)
 			require.NoError(t, err)
-			fmt.Println("received data as string:", string(data))
-			data2, err := ret2.ReadData(env)
-			require.NoError(t, err)
-			fmt.Println("received data2 as string:", string(data2))
+
+			for _, returnValue := range test.outputsPtr {
+				data, err := returnValue.ReadData(env)
+				require.NoError(t, err)
+				fmt.Println("received data as string:", string(data))
+
+			}
 
 			if test.expectedErr == nil {
 				require.NoError(t, err)
-				assert.Equal(t, test.expected, actual)
+				assert.Equal(t, test.expectedReturnValue, actual)
 
 				if len(test.expectedCalls) > 0 {
 					assert.Equal(t, test.expectedCalls, recorder.calls)

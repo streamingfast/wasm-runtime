@@ -1,5 +1,5 @@
 [package]
-name = "bigBytes-wasm"
+name = "big_bytes_wasm"
 version = "0.1.0"
 description = "A sample project sending a big bytes array"
 edition = "2018"
