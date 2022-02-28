@@ -34,10 +34,9 @@ func TestRustScript(t *testing.T) {
 			wasmFile:     "./big_bytes/target/wasm32-unknown-unknown/release/big_bytes_wasm.wasm",
 			functionName: "read_big_bytes",
 			parameters:   []interface{}{createBytesArray(1)}, // max is 1087, anything above will break
-			//parameters: []interface{}{"test"}, // max is 1087, anything above will break
-			//outputsPtr: []*wasm.AscReturnValue{
-			//	wasm.NewAscReturnValue("test.1"),
-			//},
+			outputsPtr: []*wasm.AscReturnValue{
+				wasm.NewAscReturnValue("test.1"),
+			},
 			expectedReturnValue: nil,
 		},
 	}
@@ -104,5 +103,7 @@ func (r *callRecorder) String() string {
 
 // 1 -> 1KB, 1 000 -> 1MB, 1 000 000 -> 1GB
 func createBytesArray(size int32) []byte {
-	return make([]byte, size*1024)
+	out := make([]byte, size*1024)
+	out[0] = 1
+	return out
 }
